@@ -1,62 +1,87 @@
-const express = require('express');
-const path = require('path');
-const crypto = require('crypto'); // library bawaan Node.js
-const app = express();
-const port = 3000;
+// ---------------------- IMPORT MODULE ----------------------
+const express = require('express')
+const path = require('path')
+const crypto = require('crypto')
+const mysql = require('mysql2')
+require('dotenv').config()
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const app = express()
+const port = process.env.PORT || 3000
 
-// Folder public
-app.use(express.static(path.join(__dirname, 'public')));
+// ---------------------- MIDDLEWARE ----------------------
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+app.use(express.static(path.join(__dirname, 'public')))
 
-// Route utama
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// ---------------------- KONFIGURASI DATABASE ----------------------
+const db = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME
+})
 
-// Array untuk menyimpan API key yang valid sementara
-const apiKeys = [];
-
-// Route POST untuk membuat API key
-app.post('/create', (req, res) => {
-  try {
-    // Generate API key acak dengan prefix
-    const randomPart = crypto.randomBytes(24).toString('hex'); // 48 karakter hex
-    const apiKey = `sk-sm-v1-${randomPart}`;
-
-    // Simpan key ke array
-    apiKeys.push(apiKey);
-
-    // Kirim hasil ke frontend
-    res.status(201).json({
-      success: true,
-      apiKey: apiKey,
-      createdAt: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('Error generating API key:', err);
-    res.status(500).json({ success: false, message: 'Gagal membuat API key' });
+// Tes koneksi ke database
+db.connect((err) => {
+  if (err) {
+    console.error('❌ Gagal terhubung ke database:', err)
+  } else {
+    console.log('✅ Terhubung ke database MySQL')
   }
-});
+})
 
-// Route POST untuk cek API key
+// ---------------------- ENDPOINT TEST ----------------------
+app.get('/test', (req, res) => {
+  res.send('Server API Key berjalan normal 🚀')
+})
+
+// ---------------------- ENDPOINT BUAT API KEY ----------------------
+app.post('/create', (req, res) => {
+  // Generate API key acak
+  const apiKey = `sk-sm-v1-${crypto.randomBytes(16).toString('hex')}`
+
+  // Simpan ke database
+  const query = 'INSERT INTO api_keys (`key`) VALUES (?)'
+  db.query(query, [apiKey], (err, result) => {
+    if (err) {
+      console.error('❌ Gagal menyimpan API key:', err)
+      return res.status(500).json({ success: false, message: 'Gagal menyimpan API key.' })
+    }
+
+    console.log('🔑 API Key baru disimpan:', apiKey)
+    res.status(201).json({ success: true, apiKey, createdAt: new Date().toISOString() })
+  })
+})
+
+// ---------------------- ENDPOINT CEK API KEY ----------------------
 app.post('/cekapi', (req, res) => {
-  const { key } = req.body;
+  const { key } = req.body
 
   if (!key) {
-    return res.status(400).json({ success: false, message: 'API key tidak dikirim' });
+    return res.status(400).json({ success: false, valid: false, message: 'API key tidak boleh kosong.' })
   }
 
-  if (apiKeys.includes(key)) {
-    return res.json({ success: true, message: 'API key valid' });
-  } else {
-    return res.status(401).json({ success: false, message: 'API key tidak valid' });
-  }
-});
+  const query = 'SELECT * FROM api_keys WHERE `key` = ?'
+  db.query(query, [key], (err, results) => {
+    if (err) {
+      console.error('❌ Gagal mengecek API key:', err)
+      return res.status(500).json({ success: false, valid: false, message: 'Terjadi kesalahan server.' })
+    }
 
-// Jalankan server
+    if (results.length > 0) {
+      res.json({ success: true, valid: true, message: 'API key valid ✅' })
+    } else {
+      res.json({ success: true, valid: false, message: 'API key tidak valid ❌' })
+    }
+  })
+})
+
+// ---------------------- HALAMAN UTAMA ----------------------
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'))
+})
+
+// ---------------------- JALANKAN SERVER ----------------------
 app.listen(port, () => {
-  console.log(`Server berjalan di http://localhost:${port}`);
-});
+  console.log(`✅ Server berjalan di http://localhost:${port}`)
+})
