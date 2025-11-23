@@ -145,11 +145,15 @@
       msg.textContent = result.message;
 
       if (result.success) {
+
+        alert("BERHASIL!\n" + result.message);
         fname.value = "";
         lname.value = "";
         email.value = "";
         apiField.value = "";
         btnSave.disabled = true;
+
+        
       }
     });
   </script>
